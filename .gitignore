@@ -1,0 +1,8 @@
+.venv/*
+logs/*
+__pycache__/*
+*/__pycache__/*
+parsers/__pycache__/*
+.vscode/*
+config/*
+data/*
