@@ -1,16 +1,16 @@
 """"""
-from PyPDF2 import PdfFileReader
+#from PyPDF2 import PdfFileReader
+import logging
+import pikepdf
 import pdfplumber
 
-import logging
 from logging.config import fileConfig
 
-fileConfig('config\logging_config.ini')
 logger = logging.getLogger(__name__)
 
 class PDFParser:
     """
-    
+
     ---
     Attributes
     ----------
@@ -19,9 +19,9 @@ class PDFParser:
     Methods
     -------
 
-    
+
     """
-    
+
     name = "PDF Parser"
     version = "0.0.1"
 
@@ -33,7 +33,7 @@ class PDFParser:
 
     def get_extensions(self):
         """
-        
+
         Parameters
         ----------
 
@@ -45,7 +45,7 @@ class PDFParser:
 
     def get_functions(self):
         """
-        
+
         Parameters
         ----------
 
@@ -60,9 +60,9 @@ class PDFParser:
         }
 
     def get_metadata(self, filepath: str) -> dict:
-        """This will return the doc info infomation from the 
+        """This will return the doc info infomation from the
         Named file.
-        
+
         Parameters
         ----------
 
@@ -73,22 +73,17 @@ class PDFParser:
         data = {}
 
         with open(filepath, 'rb') as f:
-            pdf = PdfFileReader(f)
-            cp = pdf.getDocumentInfo()
-        
-        if cp:
-            # get the core properties from the file...
-            data['author'] = cp.author
-            data['creator'] = cp.creator
-            data['producer'] = cp.producer
-            data['subject'] = cp.subject
-            data['title'] = cp.title
-        
+            pdf = pikepdf.Pdf.open(f)
+            cp = pdf.docinfo
+
+        for k,v in cp.items():
+            data[k] = v
+
         return data
 
     def analyze(self, filepath: str) -> dict:
         """
-        
+
         Parameters
         ----------
 
@@ -97,12 +92,12 @@ class PDFParser:
         None
         """
         data = dict
-        
+
         return data
 
     def get_contents(self, filepath: str) -> list:
         """This will return the paragroah objects in a word document
-        
+
         Parameters
         ----------
 
@@ -115,8 +110,40 @@ class PDFParser:
         with pdfplumber.open(filepath) as pdf:
             for p in pdf.pages:
                 data.append(p.extract_text())
-                
+
         return {
             "type": "strings",
             "strings": data
         }
+
+if __name__ == "__main__":
+    from argparse import ArgumentParser
+
+    fileConfig(r'config\logging_config.ini')
+    argparser = ArgumentParser(
+        prog="PDF Scanner",
+        description="will scan a PDF file and return the discovered information")
+
+    argparser.add_argument('-fp', '--file_path',
+        dest="file_path",
+        help="The path for the file to scan.")
+
+    args = argparser.parse_args()
+
+    fp = args.file_path
+    if not fp:
+        fp = r"E:\users\ms\google\dreffed\Books\20 Python Libraries You Aren't - Caleb Hattingh.pdf"
+
+    obj = PDFParser()
+
+    data = obj.get_metadata(filepath=fp)
+    print(data)
+    logger.info(data)
+
+    data = obj.get_contents(filepath=fp)
+    print(data)
+    logger.info(data)
+
+    data = obj.analyze(filepath=fp)
+    print(data)
+    logger.info(data)

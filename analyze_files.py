@@ -8,7 +8,6 @@ import parser_loader
 import logging
 from logging.config import fileConfig
 
-fileConfig('.\config\logging_config.ini')
 logger = logging.getLogger(__name__)
 
 def process(config: dict = dict()):
@@ -80,6 +79,8 @@ def process(config: dict = dict()):
             logger.info("\tFileTypes: {} => {} [{}]".format(k, cls.name, cls.version))
     
     # process the files...
+    total = len(data.get("files"))
+    step = total // 20
     for idx, (filepath, f) in enumerate(data.get("files").items()):
         if os.path.exists(filepath):
             try:
@@ -118,13 +119,19 @@ def process(config: dict = dict()):
                                         f["{}.{}".format(cls.name, name)] = func(filepath)
 
             except Exception as ex:
-                print("{} {}".format(ex, f))
-                logger.error("{} {}".format(ex, f))
+                print("{} {}\n==IDX:{} Total:{}".format(ex, f, idx, total))
+                logger.error("{} {} \n==IDX:{} Total:{}".format(ex, f, idx, total))
+
+        if idx % step == 0:
+            logger.info("== Processed {} of {} files ({} step)".format(idx, total, step))
+            save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
 
     save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
 
 
 if __name__ == "__main__":
+    fileConfig(r'config\logging_config.ini')
+
     from argparse import ArgumentParser
     argparser = ArgumentParser(
         prog="scanfiles",

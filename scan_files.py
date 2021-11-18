@@ -11,7 +11,6 @@ from utils.utils_systems import sysinfo, boottime
 import logging
 from logging.config import fileConfig
 
-fileConfig('config\logging_config.ini')
 logger = logging.getLogger(__name__)
 
 def process(config: dict = dict):
@@ -146,6 +145,8 @@ def print_results(data: dict):
 
 
 if __name__ == "__main__":
+    fileConfig('config\logging_config.ini')
+    
     from argparse import ArgumentParser
     argparser = ArgumentParser(
         prog="scanfiles",

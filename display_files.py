@@ -7,7 +7,6 @@ from utils.utils_json import load_json, get_setup
 import logging
 from logging.config import fileConfig
 
-fileConfig('config\logging_config.ini')
 logger = logging.getLogger(__name__)
 
 
@@ -93,6 +92,7 @@ def fix_extensions(config: dict = dict):
 
 
 if __name__ == "__main__":
+    fileConfig('config\logging_config.ini')
     from argparse import ArgumentParser
     argparser = ArgumentParser(
         prog="scanfiles",
