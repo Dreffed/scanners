@@ -6,9 +6,9 @@ from utils.utils_json import load_json, get_setup
 import parser_loader
 
 import logging
-from logging.config import fileConfig
 
 logger = logging.getLogger(__name__)
+logging.config.fileConfig(r'config\logging_config.ini', disable_existing_loggers=False)
 
 def process(config: dict = dict()):
     """This will take the saved files data and process the using the main plugins, see config files
@@ -130,8 +130,7 @@ def process(config: dict = dict()):
 
 
 if __name__ == "__main__":
-    fileConfig(r'config\logging_config.ini')
-
+    logger.info("Running Analyze Files...")
     from argparse import ArgumentParser
     argparser = ArgumentParser(
         prog="scanfiles",

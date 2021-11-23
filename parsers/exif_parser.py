@@ -53,7 +53,7 @@ class EXIFParser:
         return {
             "metadata": self.get_metadata,
             "analyse": self.analyze,
-            "contents": self.get_contents
+            #"contents": self.get_contents
         }
 
     def get_metadata(self, filepath: str) -> dict:

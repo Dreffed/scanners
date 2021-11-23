@@ -5,10 +5,10 @@ from utils.utils_pickle import load_pickle, save_pickle, get_data
 from utils.utils_json import load_json, get_setup
 
 import logging
-from logging.config import fileConfig
+
 
 logger = logging.getLogger(__name__)
-
+logging.config.fileConfig(r'config\logging_config.ini', disable_existing_loggers=False)
 
 def process(config: dict = dict):
     """
@@ -92,7 +92,8 @@ def fix_extensions(config: dict = dict):
 
 
 if __name__ == "__main__":
-    fileConfig('config\logging_config.ini')
+    logger.info("Running Display Files...")
+
     from argparse import ArgumentParser
     argparser = ArgumentParser(
         prog="scanfiles",
@@ -101,7 +102,8 @@ if __name__ == "__main__":
 
     argparser.add_argument('-cp', '--config_path',
         dest="config_path",
-        help="The name or path for the config file to use.")
+        help="The name or path for the config file to use.",
+        default=r".\config\config_scanner_google.json")
 
     argparser.add_argument('-v', '--version',
         action='version',

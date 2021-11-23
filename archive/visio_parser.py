@@ -1,6 +1,6 @@
 """"""
 import argparse
-import win32com.client
+import win32com
 from dateutil.parser import parse
 
 import logging

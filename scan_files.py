@@ -6,12 +6,13 @@ from re import S
 from utils.utils_files import scan_files, make_hash, get_filename
 from utils.utils_pickle import load_pickle, save_pickle, get_data
 from utils.utils_json import load_json, get_setup
-from utils.utils_systems import sysinfo, boottime
+#from utils.utils_systems import sysinfo, boottime
 
 import logging
 from logging.config import fileConfig
 
 logger = logging.getLogger(__name__)
+logging.config.fileConfig(r'config\logging_config.ini', disable_existing_loggers=False)
 
 def process(config: dict = dict):
     """
@@ -38,7 +39,7 @@ def process(config: dict = dict):
 
     scan = {
         "scandate": datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
-        "sysinfo": sysinfo(),
+        #"sysinfo": sysinfo(),
         "files": [],
         "basepaths": []
     }
@@ -71,8 +72,10 @@ def process(config: dict = dict):
                     continue
                 else:
                     logger.info("Updated: {}".format(filepath))
-            
-            scan["files"].append(uuid)
+            else:
+                # add the new UUID to the files list
+                scan["files"].append(uuid)
+
             files[filepath] = f
 
             # guid index
@@ -130,13 +133,6 @@ def print_results(data: dict):
         else:
             logger.info("{} -> {}".format(k, "n/a"))
 
-
-    uuid = "5bd4c8bd-27e4-11ec-81c4-244bfe5a9c46"
-    for filepath,f in data.get("files",{}).items():
-        if f.get("guid") == uuid:
-            logger.info(f)
-
-
     for hash, files in data.get("hashes",{}).items():
         if len(files) > 1:
             logger.info("=====================")
@@ -145,17 +141,16 @@ def print_results(data: dict):
 
 
 if __name__ == "__main__":
-    fileConfig('config\logging_config.ini')
-    
+    logger.info("Running Scan Files...")
     from argparse import ArgumentParser
     argparser = ArgumentParser(
         prog="scanfiles",
         description="will scan files based on a a set of locations, saving result to a data pickle")
 
-
     argparser.add_argument('-cp', '--config_path',
         dest="config_path",
-        help="The name or path for the config file to use.")
+        help="The name or path for the config file to use.",
+        default=r".\config\config_scanner_google.json")
 
     argparser.add_argument('-v', '--version',
         action='version',

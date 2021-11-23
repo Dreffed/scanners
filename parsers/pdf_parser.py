@@ -1,5 +1,7 @@
 """"""
 #from PyPDF2 import PdfFileReader
+from datetime import datetime
+from dateutil.parser import parse
 import logging
 import pikepdf
 import pdfplumber
@@ -7,6 +9,25 @@ import pdfplumber
 from logging.config import fileConfig
 
 logger = logging.getLogger(__name__)
+
+def convertdate(dobj):
+    """
+    """
+    if str(dobj)[:2] == "D:":
+        return datetime.strptime(str(dobj)[2:], "%Y%m%d%H%M%SZ").strftime("%Y-%m-%d %H:%M:%S")
+    return str(dobj)
+
+def convertzulu(dobj):
+    """
+    """
+    dstr = str(dobj)
+    if dstr[:2] == "D:":
+        dstr = dstr[2:]
+
+    try:
+        return parse(dstr)
+    except:
+        return str(dstr)
 
 class PDFParser:
     """
@@ -24,6 +45,33 @@ class PDFParser:
 
     name = "PDF Parser"
     version = "0.0.1"
+
+    metatag = {
+        "/Author": {
+            "label": "author",
+            "convert": str
+        },
+        "/CreationDate": {
+            "label": "create_date",
+            "convert": convertdate
+        },
+        "/Creator": {
+            "label": "creator",
+            "convert": str
+        },
+        "/ModDate": {
+            "label": "modification_date",
+            "convert": convertzulu
+        },
+        "/Producer": {
+            "label": "producer",
+            "convert": str
+        },
+        "/Title": {
+            "label": "title",
+            "convert": str
+        }
+    }
 
     def __init__(self):
         pass
@@ -56,7 +104,7 @@ class PDFParser:
         return {
             "metadata": self.get_metadata,
             "analyse": self.analyze,
-            "contents": self.get_contents
+            #"contents": self.get_contents
         }
 
     def get_metadata(self, filepath: str) -> dict:
@@ -75,10 +123,12 @@ class PDFParser:
         with open(filepath, 'rb') as f:
             pdf = pikepdf.Pdf.open(f)
             cp = pdf.docinfo
+            data["pages"] = len(pdf.pages)
 
         for k,v in cp.items():
-            data[k] = v
-
+            c = self.metatag.get(k, {})
+            data[c.get("label", k)] = c.get("convert", str)(v)
+        
         return data
 
     def analyze(self, filepath: str) -> dict:
@@ -107,9 +157,13 @@ class PDFParser:
         """
         data = []
 
-        with pdfplumber.open(filepath) as pdf:
-            for p in pdf.pages:
-                data.append(p.extract_text())
+        with open(filepath, 'rb') as f:
+            pdf = pikepdf.Pdf.open(f)
+            for pg in pdf.pages:
+                try:
+                    data.append(pg.Content())
+                except:
+                    pass
 
         return {
             "type": "strings",
