@@ -1,12 +1,11 @@
 """"""
-#from PyPDF2 import PdfFileReader
+
 from datetime import datetime
 from dateutil.parser import parse
+import fitz
 import logging
-import pikepdf
-import pdfplumber
-
 from logging.config import fileConfig
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +20,18 @@ def convertzulu(dobj):
     """
     """
     dstr = str(dobj)
-    if dstr[:2] == "D:":
-        dstr = dstr[2:]
 
-    try:
-        return parse(dstr)
-    except:
-        return str(dstr)
+    reg = re.compile(r"D:(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})(?P<hour>\d{2})(?P<min>\d{2})(?P<sec>\d{2})(?P<os>.)(?P<oh>\d{2})'(?P<om>\d{2})'")
+    m = reg.match(dstr)
+    if m:
+        return "{year}-{month}-{day} {hour}:{min}:{sec} TZ{os}{oh}:{om}".format(**m.groupdict())
+
+    reg = re.compile(r"D:(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})(?P<hour>\d{2})(?P<min>\d{2})(?P<sec>\d{2})")
+    m = reg.match(dstr)
+    if m:
+        return "{year}-{month}-{day} {hour}:{min}:{sec}".format(**m.groupdict())
+
+    return str(dstr)
 
 class PDFParser:
     """
@@ -45,33 +49,6 @@ class PDFParser:
 
     name = "PDF Parser"
     version = "0.0.1"
-
-    metatag = {
-        "/Author": {
-            "label": "author",
-            "convert": str
-        },
-        "/CreationDate": {
-            "label": "create_date",
-            "convert": convertdate
-        },
-        "/Creator": {
-            "label": "creator",
-            "convert": str
-        },
-        "/ModDate": {
-            "label": "modification_date",
-            "convert": convertzulu
-        },
-        "/Producer": {
-            "label": "producer",
-            "convert": str
-        },
-        "/Title": {
-            "label": "title",
-            "convert": str
-        }
-    }
 
     def __init__(self):
         pass
@@ -120,14 +97,14 @@ class PDFParser:
         """
         data = {}
 
-        with open(filepath, 'rb') as f:
-            pdf = pikepdf.Pdf.open(f)
-            cp = pdf.docinfo
-            data["pages"] = len(pdf.pages)
+        doc = fitz.open(filepath)
 
-        for k,v in cp.items():
-            c = self.metatag.get(k, {})
-            data[c.get("label", k)] = c.get("convert", str)(v)
+        data = doc.metadata
+        data["pagecount"] = doc.page_count
+        if "creationDate" in data:
+            data["creationDate"] = convertzulu(data.get("creationDate"))
+        if "modDate" in data:
+            data["modDate"] = convertzulu(data.get("modDate"))
         
         return data
 
@@ -146,7 +123,7 @@ class PDFParser:
         return data
 
     def get_contents(self, filepath: str) -> list:
-        """This will return the paragroah objects in a word document
+        """This will return the TOC of the document,
 
         Parameters
         ----------
@@ -157,23 +134,21 @@ class PDFParser:
         """
         data = []
 
-        with open(filepath, 'rb') as f:
-            pdf = pikepdf.Pdf.open(f)
-            for pg in pdf.pages:
-                try:
-                    data.append(pg.Content())
-                except:
-                    pass
+        doc = fitz.open(filepath)
+
+        data = doc.get_toc(simple=True)
 
         return {
-            "type": "strings",
+            "type": "toc",
             "strings": data
         }
 
 if __name__ == "__main__":
+    fileConfig(r'config\logging_config.ini', disable_existing_loggers=False)
+    logger.info("Running PDF Parser...")
+
     from argparse import ArgumentParser
 
-    fileConfig(r'config\logging_config.ini')
     argparser = ArgumentParser(
         prog="PDF Scanner",
         description="will scan a PDF file and return the discovered information")
