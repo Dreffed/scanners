@@ -19,6 +19,7 @@ pycparser==2.20
 pycryptodome==3.11.0
 PyGetWindow==0.0.9
 PyMsgBox==1.0.9
+pymupdf
 PyPDF2==1.26.0
 pyperclip==1.8.2
 pypiwin32==223
