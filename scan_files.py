@@ -37,14 +37,15 @@ def process(config: dict = dict):
     guids = data.get("guids", {})
     scans = data.get("scans", [])
 
-    scan = {
-        "scandate": datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
-        #"sysinfo": sysinfo(),
-        "files": [],
-        "basepaths": []
-    }
+
 
     for scanitem in config.get("locations", {}).get("scanpaths", []):
+        scan = {
+            "scandate": datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
+            #"sysinfo": sysinfo(),
+            "files": [],
+            "basepaths": []
+        }      
         scanpath = get_filename(scanitem)
         scan["basepaths"].append(scanpath)
 
@@ -101,18 +102,18 @@ def process(config: dict = dict):
                 hashes[hash] = []
             hashes[hash].append(uuid)
 
-    scans.append(scan)
+        scans.append(scan)
 
-    # update the data object...
-    data["files"] = files
-    data["exts"] = exts
-    data["filenames"] = filenames
-    data["hashes"] = hashes
-    data["guids"] = guids
-    data["scans"] = scans
+        # update the data object...
+        data["files"] = files
+        data["exts"] = exts
+        data["filenames"] = filenames
+        data["hashes"] = hashes
+        data["guids"] = guids
+        data["scans"] = scans
 
-    # save the file
-    save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
+        # save the file
+        save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
 
 def print_results(data: dict):
     """
