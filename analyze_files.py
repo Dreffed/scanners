@@ -8,7 +8,7 @@ import parser_loader
 import logging
 
 logger = logging.getLogger(__name__)
-logging.config.fileConfig(r'config\logging_config.ini', disable_existing_loggers=False)
+logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
 
 def process(config: dict = dict()):
     """This will take the saved files data and process the using the main plugins, see config files

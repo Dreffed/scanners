@@ -12,7 +12,7 @@ import logging
 from logging.config import fileConfig
 
 logger = logging.getLogger(__name__)
-logging.config.fileConfig(r'config\logging_config.ini', disable_existing_loggers=False)
+logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
 
 def process(config: dict = dict):
     """
