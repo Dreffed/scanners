@@ -37,8 +37,6 @@ def process(config: dict = dict):
     guids = data.get("guids", {})
     scans = data.get("scans", [])
 
-
-
     for scanitem in config.get("locations", {}).get("scanpaths", []):
         scan = {
             "scandate": datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
@@ -73,10 +71,9 @@ def process(config: dict = dict):
                     continue
                 else:
                     logger.info("Updated: {}".format(filepath))
-            else:
-                # add the new UUID to the files list
-                scan["files"].append(uuid)
 
+            # Save the  scan hits...
+            scan["files"].append(uuid)
             files[filepath] = f
 
             # guid index
