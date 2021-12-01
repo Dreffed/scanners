@@ -95,9 +95,10 @@ def process(config: dict = dict):
 
             # hash
             hash = f.get("hash", {}).get("SHA1", "")
-            if hash not in hashes:
-                hashes[hash] = []
-            hashes[hash].append(uuid)
+            if hash:
+                if hash not in hashes:
+                    hashes[hash] = []
+                hashes[hash].append(uuid)
 
         scans.append(scan)
 

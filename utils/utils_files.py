@@ -167,7 +167,9 @@ def scan_files(folder, options={}):
  
             # check for HASH
             if options.get("generatehash"):
-                data["hash"] = make_hash(filepath=filepath)
+                maxsize = options.get("maxhashsize")
+                if maxsize and maxsize >= data.get("size",0):
+                    data["hash"] = make_hash(filepath=filepath)
 
             yield data
 
