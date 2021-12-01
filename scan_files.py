@@ -1,15 +1,11 @@
 """"""
 import os
 from datetime import datetime
-from re import S
-
-from utils.utils_files import scan_files, make_hash, get_filename
-from utils.utils_pickle import load_pickle, save_pickle, get_data
-from utils.utils_json import load_json, get_setup
-#from utils.utils_systems import sysinfo, boottime
-
 import logging
-from logging.config import fileConfig
+from utils.utils_files import scan_files, get_filename
+from utils.utils_pickle import save_pickle, get_data
+from utils.utils_json import get_setup
+#from utils.utils_systems import sysinfo, boottime
 
 logger = logging.getLogger(__name__)
 logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
@@ -62,7 +58,7 @@ def process(config: dict = dict):
             filepath = os.path.join(f.get("folder"), filename)
 
             if idx % 10000 == 0:
-                logger.info("Tick {}".format(idx, filepath))
+                logger.info("Tick {} - {}".format(idx, filepath))
 
             # check if the file has changed...
             if filepath in files:
@@ -97,11 +93,11 @@ def process(config: dict = dict):
             filenames[filename].append(uuid)
 
             # hash
-            hash = f.get("hash", {}).get("SHA1", "")
-            if hash:
-                if hash not in hashes:
-                    hashes[hash] = []
-                hashes[hash].append(uuid)
+            hashvalue = f.get("hash", {}).get("SHA1", "")
+            if hashvalue:
+                if hashvalue not in hashes:
+                    hashes[hashvalue] = []
+                hashes[hashvalue].append(uuid)
 
         scans.append(scan)
 
@@ -135,7 +131,7 @@ def print_results(data: dict):
         else:
             logger.info("{} -> {}".format(k, "n/a"))
 
-    for hash, files in data.get("hashes",{}).items():
+    for _, files in data.get("hashes",{}).items():
         if len(files) > 1:
             logger.info("=====================")
             for guid in files:

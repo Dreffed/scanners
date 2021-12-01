@@ -1,12 +1,11 @@
+import hashlib
+import logging
 import os
 import re
 import stat
 import time
-import hashlib
 import uuid
 from .utils_core import convert_size
-import logging
-from logging.config import fileConfig
 
 logger = logging.getLogger(__name__)
 
@@ -140,17 +139,17 @@ def scan_files(folder, options={}):
             fname, ext = os.path.splitext(filename)
 
             # filter the files is needed...
-            filter = options.get("filter")
+            filter_config = options.get("filter")
             output = {}
-            if filter:
-                if "exts" in filter:
+            if filter_config:
+                if "exts" in filter_config:
                     output["ext"] = 0
-                    if ext in filter.get("exts", []):
+                    if ext in filter_config.get("exts", []):
                         output["ext"] = 1
                 
-                if "regex" in filter:
+                if "regex" in filter_config:
                     output["regex"] = 0
-                    filter_reg = re.compile(filter.get("regex", ""))
+                    filter_reg = re.compile(filter_config.get("regex", ""))
                     m = filter_reg.match(fname)
                     if m:
                         output["regex"] = 1
