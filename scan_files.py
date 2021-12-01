@@ -52,7 +52,7 @@ def process(config: dict = dict):
             continue
 
         logger.info("SCANNING {}".format(scanpath))
-        for f in scan_files(scanpath, options=config.get("scanoptions", {})):
+        for idx, f in enumerate(scan_files(scanpath, options=config.get("scanoptions", {}))):
             uuid = f.get("guid")
             if config.get("scanoptions", {}).get("splitextention"):
                 filename = "{}{}".format(f.get("file"), f.get("ext"))
@@ -60,6 +60,9 @@ def process(config: dict = dict):
                 filename = f.get("file")
 
             filepath = os.path.join(f.get("folder"), filename)
+
+            if idx % 10000 == 0:
+                logger.info("Tick {}".format(idx, filepath))
 
             # check if the file has changed...
             if filepath in files:
@@ -156,5 +159,6 @@ if __name__ == "__main__":
         version='%(prog)s 1.0')
 
     args = argparser.parse_args()
+    logger.info("Config: {}".format(args.config_path))
     config = get_setup(filename=args.config_path)
     process(config=config)
