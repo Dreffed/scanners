@@ -122,22 +122,29 @@ class ExcelParser:
         -------
         None
         """
-        data = []
+        data = {}
         try:
-            wb = openpyxl.load_workbook(filepath)
+            wb = openpyxl.load_workbook(filepath) 
             for sname in wb.sheetnames:
                 ws = wb[sname]
+                sht_data = []
+
                 for values in ws.iter_rows(min_row=ws.min_row, 
                               max_row=ws.max_row, 
                               min_col=ws.min_column, 
                               max_col=ws.max_column,
                               values_only=True):
-                    data.append("\t".join(map(str, values)))
-            
+                    sht_data.append("\t".join(map(str, values)))
+
+                data[sname] = {
+                    "size": (ws.min_column, ws.min_row, ws.max_column, ws.max_row),
+                    "rows": sht_data
+                }
+
         except Exception as ex:
             print("ERROR: {}\n\t>>>{}".format(filepath,ex))
 
         return {
-            "type": "rows",   
+            "type": "sheets",   
             "data": data
         }

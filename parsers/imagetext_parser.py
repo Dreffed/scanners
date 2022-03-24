@@ -1,40 +1,12 @@
 """"""
-
-from datetime import datetime
-import fitz
 import logging
 from logging.config import fileConfig
-import re
 
 logger = logging.getLogger(__name__)
 
-def convertdate(dobj):
+class ImageTextParser:
     """
-    """
-    if str(dobj)[:2] == "D:":
-        return datetime.strptime(str(dobj)[2:], "%Y%m%d%H%M%SZ").strftime("%Y-%m-%d %H:%M:%S")
-    return str(dobj)
-
-def convertzulu(dobj):
-    """
-    """
-    dstr = str(dobj)
-
-    reg = re.compile(r"D:(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})(?P<hour>\d{2})(?P<min>\d{2})(?P<sec>\d{2})(?P<os>.)(?P<oh>\d{2})'(?P<om>\d{2})'")
-    m = reg.match(dstr)
-    if m:
-        return "{year}-{month}-{day} {hour}:{min}:{sec} TZ{os}{oh}:{om}".format(**m.groupdict())
-
-    reg = re.compile(r"D:(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})(?P<hour>\d{2})(?P<min>\d{2})(?P<sec>\d{2})")
-    m = reg.match(dstr)
-    if m:
-        return "{year}-{month}-{day} {hour}:{min}:{sec}".format(**m.groupdict())
-
-    return str(dstr)
-
-class PDFParser:
-    """
-
+    
     ---
     Attributes
     ----------
@@ -43,10 +15,9 @@ class PDFParser:
     Methods
     -------
 
-
+    
     """
-
-    name = "PDF Parser"
+    name = "Image Text Extractor"
     version = "0.0.1"
 
     def __init__(self):
@@ -54,10 +25,10 @@ class PDFParser:
 
     def __str__(self):
         return "{} {}".format(self.name, self.version)
-
+    
     def get_extensions(self):
         """
-
+        
         Parameters
         ----------
 
@@ -65,11 +36,11 @@ class PDFParser:
         -------
         None
         """
-        return [".pdf"]
+        return []
 
     def get_functions(self):
         """
-
+        
         Parameters
         ----------
 
@@ -80,36 +51,13 @@ class PDFParser:
         return {
             "metadata": self.get_metadata,
             "analyse": self.analyze,
-            #"contents": self.get_contents
+            "contents": self.get_contents
         }
 
     def get_metadata(self, filepath: str) -> dict:
-        """This will return the doc info infomation from the
+        """This will return the doc info infomation from the 
         Named file.
-
-        Parameters
-        ----------
-
-        Returns
-        ----    ---
-        None
-        """
-        data = {}
-
-        doc = fitz.open(filepath)
-
-        data = doc.metadata
-        data["pagecount"] = doc.page_count
-        if "creationDate" in data:
-            data["creationDate"] = convertzulu(data.get("creationDate"))
-        if "modDate" in data:
-            data["modDate"] = convertzulu(data.get("modDate"))
         
-        return data
-
-    def analyze(self, filepath: str) -> dict:
-        """
-
         Parameters
         ----------
 
@@ -117,27 +65,28 @@ class PDFParser:
         -------
         None
         """
+
         data = {}
-        doc = fitz.open(filepath)
-        for idx, page in enumerate(doc):
-            text = page.get_text()
-            if text:
-                data[idx] = text
-                continue
+        
+        return data
 
-            # extract blocks if any...
-            blocks = page.get_text("dict", flags=0)["blocks"]
-            if blocks:
-                data[idx] = blocks
-                continue
+    def analyze(self, filepath: str) -> dict:
+        """
+        
+        Parameters
+        ----------
 
-
-
+        Returns
+        -------
+        None
+        """
+        data = dict
+        
         return data
 
     def get_contents(self, filepath: str) -> list:
-        """This will return the TOC of the document,
-
+        """This will return the paragroah objects in a word document
+        
         Parameters
         ----------
 
@@ -147,14 +96,7 @@ class PDFParser:
         """
         data = []
 
-        doc = fitz.open(filepath)
-
-        data = doc.get_toc(simple=True)
-
-        return {
-            "type": "toc",
-            "strings": data
-        }
+        return data
 
 if __name__ == "__main__":
     #fileConfig(r'config\logging_config.ini', disable_existing_loggers=False)
@@ -176,7 +118,7 @@ if __name__ == "__main__":
     if not fp:
         fp = r"E:\users\ms\google\thoughtswin\Manitoba Hydro\General\Gartner\3 Steps to Creating Enterprise Architecture Services.pdf"
 
-    obj = PDFParser()
+    obj = ImageTextParser()
 
     data = obj.get_metadata(filepath=fp)
     print(data)
