@@ -3,7 +3,6 @@
 from datetime import datetime
 import fitz
 import logging
-from logging.config import fileConfig
 import re
 
 logger = logging.getLogger(__name__)
@@ -117,23 +116,55 @@ class PDFParser:
         -------
         None
         """
-        data = {}
         doc = fitz.open(filepath)
+        lines = {}
+        pages = {}
+        blocks = {}
+        html = {}
         for idx, page in enumerate(doc):
-            text = page.get_text()
+            text = page.get_text('text', sort=True, flags=2)
             if text:
-                data[idx] = text
-                continue
+                pages[idx] = []
+                # the text is split on lines
+                for line in text.split("\n"):
+                    if line not in lines:
+                        lines[line] = 0
 
+                    pages[idx].append(line)
+                    lines[line] += 1
+                        
             # extract blocks if any...
-            blocks = page.get_text("dict", flags=0)["blocks"]
-            if blocks:
-                data[idx] = blocks
-                continue
+            blocks[idx] = []
+            for block in page.get_text("blocks", sort=True, flags=2):
+                (x0, y0, x1, y1, block_text, block_no, block_type) = block
+                blocks[idx].append(
+                    {
+                        "x0": x0,
+                        "y0": y0,
+                        "x1": x1,
+                        "y1": y1,
+                        "no": block_no,
+                        "type": block_type,
+                        "text": block_text.replace("\n", " ")
+                    }
+                )
+
+            html[idx] = page.get_text('html', flags=2)
+
+        return {
+            "lines": lines,
+            "pages": pages,
+            "blocks": blocks,
+            "html": html
+        }
+
+    def get_meta(self, filepath: str) -> dict:
+        """ This will take the first page of the document and try to extract info from it
+        """
+        doc = fitz.open(filepath)
+        page = doc[0]
 
 
-
-        return data
 
     def get_contents(self, filepath: str) -> list:
         """This will return the TOC of the document,
@@ -156,6 +187,8 @@ class PDFParser:
             "strings": data
         }
 
+
+
 if __name__ == "__main__":
     #fileConfig(r'config\logging_config.ini', disable_existing_loggers=False)
     logger.info("Running PDF Parser...")
@@ -174,7 +207,7 @@ if __name__ == "__main__":
 
     fp = args.file_path
     if not fp:
-        fp = r"E:\users\ms\google\thoughtswin\Manitoba Hydro\General\Gartner\3 Steps to Creating Enterprise Architecture Services.pdf"
+        fp = r"E:\users\ms\google\thoughtswin\Manitoba Hydro\EA\General\Gartner\3 Monetization Approaches for Driving Digital Revenue.pdf"
 
     obj = PDFParser()
 
@@ -187,5 +220,17 @@ if __name__ == "__main__":
     logger.info(data)
 
     data = obj.analyze(filepath=fp)
-    print(data)
-    logger.info(data)
+    #for k,v in data.items():
+    #    print("====\n\t{}".format(k))
+    #    print(v)
+    #for k,v in data.get("lines",{}).items():
+    #    print("{}\t{}".format(v,k))
+    for k,v in data.get("pages",{}).items():
+        print("===== {}".format(k))
+        for line in v:
+            print(line)
+        break
+    for k,v in data.get("blocks",{}).items():
+        print("===== {}".format(k))
+        print(v)
+        break

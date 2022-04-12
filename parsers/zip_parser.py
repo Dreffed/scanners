@@ -2,9 +2,7 @@
 from zipfile import ZipFile
 from datetime import datetime
 import logging
-from logging.config import fileConfig
 
-fileConfig('config\logging_config.ini')
 logger = logging.getLogger(__name__)
 
 def datetuple_str(datetuple):

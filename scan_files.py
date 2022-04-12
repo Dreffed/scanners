@@ -5,6 +5,7 @@ import logging
 from utils.utils_files import scan_files, get_filename
 from utils.utils_pickle import save_pickle, get_data
 from utils.utils_json import get_setup
+from utils.utils_rules import get_regexes, profile
 #from utils.utils_systems import sysinfo, boottime
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,10 @@ def process(config: dict = dict):
             if idx % 10000 == 0:
                 logger.info("Tick {} - {}".format(idx, filepath))
 
+            # get the name profile
+            if "profile" not in f:
+                f["profile"] = profile(source=filename, regexes=get_regexes())
+
             # check if the file has changed...
             if filepath in files:
                 # get the former GUID if known
@@ -67,6 +72,9 @@ def process(config: dict = dict):
                 f_old = files.get(filepath)
                 if f_old.get("size", 0) == f.get("size", -1) and f_old.get("hash", {}).get("SHA1", "") == f.get("hash", {}).get("SHA1", ""):
                     logger.debug("Already scanned: {}".format(filepath))
+                    if "profile" not in f_old:
+                        logger.debug("Updating name profile: {}".format(filepath))
+                        files[filepath] = f
                     continue
                 else:
                     logger.info("Updated: {}".format(filepath))

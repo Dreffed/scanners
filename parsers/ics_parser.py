@@ -1,13 +1,10 @@
 """"""
 from os import path
 import io
+import logging
 from ics import Calendar, attendee
 from pathlib import Path
 
-import logging
-from logging.config import fileConfig
-
-fileConfig('config\logging_config.ini')
 logger = logging.getLogger(__name__)
 
 class ICSParser:

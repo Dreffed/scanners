@@ -1,11 +1,10 @@
 """"""
 import os
-from utils.utils_pickle import load_pickle, save_pickle, get_data
-from utils.utils_files import get_filename
-from utils.utils_json import load_json, get_setup
-import parser_loader
-
 import logging
+from utils.utils_pickle import save_pickle, get_data
+from utils.utils_files import get_filename
+from utils.utils_json import get_setup
+import parser_loader
 
 logger = logging.getLogger(__name__)
 logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
