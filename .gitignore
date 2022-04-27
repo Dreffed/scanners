@@ -1,5 +1,6 @@
 .venv/*
 logs/*
+archive/*
 __pycache__/*
 */__pycache__/*
 parsers/__pycache__/*
