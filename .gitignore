@@ -6,3 +6,4 @@ parsers/__pycache__/*
 .vscode/*
 config/*
 data/*
+*.ini

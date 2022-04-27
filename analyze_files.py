@@ -75,11 +75,12 @@ def process(config: dict = dict()):
     # list the available parsers...
     for k,v in functions.items():
         for cls in v:
-            logger.info("\tFileTypes: {} => {} [{}]".format(k, cls.name, cls.version))
+            logger.info(f"\tFileTypes: {k} => {cls.name} [{cls.version}]")
     
     # process the files...
     total = len(data.get("files"))
     step = total // 20
+    func_status = {}
     for idx, (filepath, f) in enumerate(data.get("files").items()):
         if os.path.exists(filepath):
             try:
@@ -107,6 +108,8 @@ def process(config: dict = dict()):
                                             if func:
                                                 if "{}.{}".format(cls.name, name) not in f:
                                                     f["{}.{}".format(cls.name, name)] = func(filepath)
+                                                    ext = f.get("ext")
+                                                    logger.debug(f"{idx} {ext} {cls.name} {name}")
 
                 # handle the all case...
                 for cls_list in functions.get(":ALL:", []):
@@ -116,13 +119,13 @@ def process(config: dict = dict()):
                                 if name in config.get("analyze", {}).get("allfiles",{}).get("methods",[]):
                                     if "{}.{}".format(cls.name, name) not in f:
                                         f["{}.{}".format(cls.name, name)] = func(filepath)
+                                        logger.debug(f"== FUNC {name}")
 
             except Exception as ex:
-                print("{} {}\n==IDX:{} Total:{}".format(ex, f, idx, total))
-                logger.error("{} {} \n==IDX:{} Total:{}".format(ex, f, idx, total))
+                logger.error(f"{ex} {f} \n==IDX:{idx} Total:{total}")
 
         if idx % step == 0:
-            logger.info("== Processed {} of {} files ({} step)".format(idx, total, step))
+            logger.info(f"== Processed {idx} of {total} files ({step} step)")
             save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
 
     save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))

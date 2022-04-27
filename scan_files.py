@@ -75,6 +75,9 @@ def process(config: dict = dict):
                     if "profile" not in f_old:
                         logger.debug("Updating name profile: {}".format(filepath))
                         files[filepath] = f
+                    if "hash" not in f_old:
+                        files[filepath] = f
+                        
                     continue
                 else:
                     logger.info("Updated: {}".format(filepath))

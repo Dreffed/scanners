@@ -3,7 +3,7 @@ The scanner set of programs are a set of utilities to perform the following:
 scan_files.py
 reads in the supplied path to a configuration file, and will scan the files contained in the specified fodlers.
 
-analyse files
+analyze files
 will load the config file
 loads the parsers in the parser directory, module matches pattern *_parser$
 Build list of extensions that can be parsed, and attaches the classes to this list, multiple parsers can serve a particular file type

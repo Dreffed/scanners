@@ -35,3 +35,16 @@ def get_data(config: dict = {}) -> dict:
     
     data = load_pickle(get_filename(config.get("locations", {}).get("data", {})))
     return data
+
+def save_data(data: dict, config: dict) -> None:
+    """
+    
+    Parameters
+    ----------
+
+    Returns
+    -------
+    None
+    
+    """
+    save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))

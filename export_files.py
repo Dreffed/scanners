@@ -2,7 +2,8 @@
 import os
 from datetime import datetime
 import logging
-import pandas as PD
+import pandas as pd
+import pandas.io.formats.excel
 from utils.utils_files import scan_files, get_filename
 from utils.utils_pickle import save_pickle, get_data
 from utils.utils_json import get_setup
@@ -27,6 +28,9 @@ def process(config: dict = dict):
     """
     data = get_data(config=config)
     rows = []
+    f_fields = 0
+    w_fields = 0
+
     for idx, (filepath, f) in enumerate(data.get("files", {}).items()):
         if "profile" not in f:
             f["profile"] = profile(source=f.get("file",""), regexes=get_regexes())
@@ -41,9 +45,13 @@ def process(config: dict = dict):
             "profile": f.get("profile",{}).get("profile")
         }
 
+        df_cols = list(row.keys())
+
         # expand folders
         for idx, fldr in enumerate(f.get("folders", [])):
-            row["f{}".format(idx)] = fldr
+            row[f'f{idx:02}'] = fldr
+            if idx > f_fields:
+                f_fields = idx
 
         # get extracted words
         step = -1
@@ -52,12 +60,34 @@ def process(config: dict = dict):
             word_type = parts.get("type")
             if word_type in ["W", "U", "N", "B"]:
                 step += 1
-                row["w{}".format(step)] = word
+                row[f'w{step:02}'.format(step)] = word
+                if step > w_fields:
+                    w_fields = step
+        
+        
 
         rows.append(row)
 
+    f_cols = [f'f{i:02}' for i in range(0, f_fields+1, 1)]
+    print(f_cols)
+    df_cols.extend(f_cols)
+
+    w_cols = [f'w{i:02}' for i in range(0, w_fields+1, 1)]
+    print(w_cols)
+    df_cols.extend(w_cols)
+
     # convert the rows to a dataframe
-    df = DataFrame(rows)
+    df = pd.DataFrame(rows)
+    df = df[df_cols]
+    sps = config.get("locations", {}).get("scanpaths", [])
+    excel_path = "Document List - {}.xlsx".format(sps[0].get("folders",[])[-1])
+    writer = pd.ExcelWriter(excel_path, engine="xlsxwriter")
+    name = "Filelist"
+    row_offset = 1
+    header_offset = 1
+    use_header = True
+    df.to_excel(writer, sheet_name=name, startrow=row_offset+header_offset, index=False, header=use_header)
+    writer.save()
 
 if __name__ == "__main__":
     logger.info("Running Export Files...")
