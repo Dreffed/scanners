@@ -30,6 +30,7 @@ def process(config: dict = dict):
     rows = []
     f_fields = 0
     w_fields = 0
+    m_cols = set()
 
     for idx, (filepath, f) in enumerate(data.get("files", {}).items()):
         if "profile" not in f:
@@ -64,17 +65,23 @@ def process(config: dict = dict):
                 if step > w_fields:
                     w_fields = step
         
-        
+        # get the fields in metadata
+        for field, value in f.get("metadata", {}).items():
+            m_cols.add(field)
+            row[field] = value
 
         rows.append(row)
 
     f_cols = [f'f{i:02}' for i in range(0, f_fields+1, 1)]
-    print(f_cols)
+    logger.debug(f'Folders: {f_cols}')
     df_cols.extend(f_cols)
 
     w_cols = [f'w{i:02}' for i in range(0, w_fields+1, 1)]
-    print(w_cols)
+    logger.debug(f'Words: {w_cols}')
     df_cols.extend(w_cols)
+
+    logger.debug(f'Metadata: {sorted(m_cols)}')
+    df_cols.extend(sorted(m_cols))
 
     # convert the rows to a dataframe
     df = pd.DataFrame(rows)
@@ -106,6 +113,6 @@ if __name__ == "__main__":
         version='%(prog)s 1.0')
 
     args = argparser.parse_args()
-    logger.info("Config: {}".format(args.config_path))
+    logger.debug("Config: {}".format(args.config_path))
     config = get_setup(filename=args.config_path)
     process(config=config)

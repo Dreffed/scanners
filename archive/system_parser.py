@@ -42,7 +42,7 @@ class SystemParser:
         """
         return {
             "metadata": self.get_metadata,
-            "analyse": self.analyze,
+            "analyze": self.analyze,
             "contents": self.get_contents
         }
 
