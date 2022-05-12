@@ -8,3 +8,5 @@ parsers/__pycache__/*
 config/*
 data/*
 *.ini
+*.xlsx
+logging_config.ini
