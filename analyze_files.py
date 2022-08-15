@@ -124,7 +124,7 @@ def process(config: dict = dict()):
             except Exception as ex:
                 logger.error(f"{ex} {f} \n==IDX:{idx} Total:{total}")
 
-        if idx % step == 0:
+        if step > 0 and idx % step == 0:
             logger.info(f"== Processed {idx} of {total} files ({step} step)")
             save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
 
