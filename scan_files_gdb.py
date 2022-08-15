@@ -6,6 +6,7 @@ from utils.utils_files import scan_files, get_filename
 from utils.utils_pickle import save_pickle, get_data
 from utils.utils_json import get_setup
 from utils.utils_rules import get_regexes, profile
+from utils.utils_database import GraphDB
 #from utils.utils_systems import sysinfo, boottime
 
 logger = logging.getLogger(__name__)
@@ -25,14 +26,8 @@ def process(config: dict = dict):
 
     """
 
-    data = get_data(config=config)
-
-    files = data.get("files", {})
-    exts = data.get("exts", {})
-    filenames = data.get("filenames", {})
-    hashes = data.get("hashes", {})
-    guids = data.get("guids", {})
-    scans = data.get("scans", [])
+    gdb = GraphDB(config=config)
+    gdb.connect()
 
     for scanitem in config.get("locations", {}).get("scanpaths", []):
         scan = {
@@ -40,8 +35,8 @@ def process(config: dict = dict):
             #"sysinfo": sysinfo(),
             "files": [],
             "basepaths": []
-            
         }      
+        
         scanpath = get_filename(scanitem)
         scan["basepaths"].append(scanpath)
 
@@ -111,18 +106,7 @@ def process(config: dict = dict):
                     hashes[hashvalue] = []
                 hashes[hashvalue].append(uuid)
 
-        scans.append(scan)
-
-        # update the data object...
-        data["files"] = files
-        data["exts"] = exts
-        data["filenames"] = filenames
-        data["hashes"] = hashes
-        data["guids"] = guids
-        data["scans"] = scans
-
-        # save the file
-        save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
+    gdb.close()
 
 def print_results(data: dict):
     """

@@ -32,8 +32,11 @@ def get_data(config: dict = {}) -> dict:
     None
     
     """
-    
-    data = load_pickle(get_filename(config.get("locations", {}).get("data", {})))
+    if "database" in config:
+        # 
+        pass
+    else:
+        data = load_pickle(get_filename(config.get("locations", {}).get("data", {})))
     return data
 
 def save_data(data: dict, config: dict) -> None:
