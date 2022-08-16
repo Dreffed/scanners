@@ -8,5 +8,10 @@ parsers/__pycache__/*
 config/*
 data/*
 *.ini
+Lib/*
+Scripts/*
+*.cfg
+*.ini
+*.bat
 *.xlsx
 logging_config.ini
