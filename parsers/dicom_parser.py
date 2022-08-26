@@ -1,5 +1,6 @@
 """"""
 import logging
+import pydicom
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ class BaseParser:
 
     
     """
-    name = "names"
+    name = "DICOM Parser"
     version = "0.0.1"
 
     def __init__(self):
@@ -35,7 +36,7 @@ class BaseParser:
         -------
         None
         """
-        return []
+        return [".dcm"]
 
     def get_functions(self):
         """
@@ -50,7 +51,7 @@ class BaseParser:
         return {
             "metadata": self.get_metadata,
             "analyze": self.analyze,
-            "contents": self.get_contents
+            "contents": self.get_contents,
         }
 
     def get_metadata(self, filepath: str) -> dict:
@@ -64,9 +65,9 @@ class BaseParser:
         -------
         None
         """
-
         data = {}
-        
+        dcm_file = pydicom.dcmread(filepath)
+        print(dcm_file.to_json_dict())
         return data
 
     def analyze(self, filepath: str) -> dict:
