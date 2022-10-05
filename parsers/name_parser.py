@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 class NameParser:
     """
-    
+
     ---
     Attributes
     ----------
@@ -15,7 +15,7 @@ class NameParser:
     Methods
     -------
 
-    
+
     """
     name = "names"
     version = "0.0.1"
@@ -38,10 +38,10 @@ class NameParser:
 
     def __str__(self):
         return "Filename parser"
-        
+
     def get_extensions(self):
         """
-        
+
         Parameters
         ----------
 
@@ -53,7 +53,7 @@ class NameParser:
 
     def get_functions(self):
         """
-        
+
         Parameters
         ----------
 
@@ -67,7 +67,7 @@ class NameParser:
 
     def get_metadata(self, filepath: str) -> dict:
         """This will return a profile of the file path and name
-        
+
         Parameters
         ----------
 
@@ -106,7 +106,7 @@ class NameParser:
             "parts": parts,
             "profile": "".join(output),
             "expand": input
-        }        
+        }
 
 
 if __name__ == "__main__":
@@ -123,7 +123,7 @@ if __name__ == "__main__":
         '29563 - Undertaking - Hillcrest Place',
         'BCFSA Application for Consent Application Section #2 - Sub-Section #2 - November 30 2019 MERGER AGREEMENTS',
         'Bulkley Valley - X020317',
-        "D:\\users\\ms\\Dropbox\\personal\\accounts\\tosort\\TD_EMERALD_FLEX_RATE_VISA_CARD_1504_Oct_25-2021.pdf"
+        "D:\\users\\user\\files\\personal\\accounts\\tosort\\BLUE_CARD_VISA_CARD_1504_Oct_25-2021.pdf"
     ]
 
     obj = NameParser()
