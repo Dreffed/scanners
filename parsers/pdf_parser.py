@@ -103,7 +103,7 @@ class PDFParser:
             data["creationDate"] = convertzulu(data.get("creationDate"))
         if "modDate" in data:
             data["modDate"] = convertzulu(data.get("modDate"))
-        
+
         return data
 
     def analyze(self, filepath: str) -> dict:
@@ -132,7 +132,7 @@ class PDFParser:
 
                     pages[idx].append(line)
                     lines[line] += 1
-                        
+
             # extract blocks if any...
             blocks[idx] = []
             for block in page.get_text("blocks", sort=True, flags=2):
@@ -207,14 +207,17 @@ if __name__ == "__main__":
 
     fp = args.file_path
     if not fp:
-        fp = r"E:\users\ms\google\thoughtswin\Manitoba Hydro\EA\General\Gartner\3 Monetization Approaches for Driving Digital Revenue.pdf"
+        #fp = r"D:\purge\dicom\DICOM Datasets\2210025_SURBHID_OSURESH_BRAIN AND HEAD.pdf"
+        fp = r"D:\purge\dicom\DICOM Datasets\2210027_DHARAMVIR_BRAIN AND HEAD.pdf"
 
     obj = PDFParser()
 
+    print("Metadata:")
     data = obj.get_metadata(filepath=fp)
     print(data)
     logger.info(data)
 
+    print("Contents:")
     data = obj.get_contents(filepath=fp)
     print(data)
     logger.info(data)
@@ -226,11 +229,11 @@ if __name__ == "__main__":
     #for k,v in data.get("lines",{}).items():
     #    print("{}\t{}".format(v,k))
     for k,v in data.get("pages",{}).items():
-        print("===== {}".format(k))
+        print("Pages: {}".format(k))
         for line in v:
             print(line)
         break
     for k,v in data.get("blocks",{}).items():
-        print("===== {}".format(k))
+        print("Blocks: {}".format(k))
         print(v)
         break
