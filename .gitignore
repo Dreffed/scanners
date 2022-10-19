@@ -15,3 +15,5 @@ Scripts/*
 *.bat
 *.xlsx
 logging_config.ini
+
+*.csv
