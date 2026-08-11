@@ -1,14 +1,13 @@
 """"""
 import os
 from utils.utils_files import scan_files, make_hash, get_filename
-from utils.utils_pickle import load_pickle, save_pickle, get_data
+from utils.utils_pickle import derives_indexes, get_data, save_data
 from utils.utils_json import load_json, get_setup
 
 import logging
 
 
 logger = logging.getLogger(__name__)
-logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
 
 def process(config: dict = dict):
     """
@@ -76,6 +75,12 @@ def fix_extensions(config: dict = dict):
     """
 
     data = get_data(config=config)
+
+    if derives_indexes(data):
+        # SQLite groups on lower(ext), so there is nothing to fold together.
+        logger.info("Extension index is derived by query - nothing to fix.")
+        return
+
     exts = {}
 
     for k,v in data.get("exts",{}).items():
@@ -88,10 +93,12 @@ def fix_extensions(config: dict = dict):
     print(len(exts), len(data.get("exts",{})))
     data["exts"] = exts
 
-    save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
+    save_data(data=data, config=config)
 
 
 if __name__ == "__main__":
+    import logging.config
+    logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
     logger.info("Running Display Files...")
 
     from argparse import ArgumentParser

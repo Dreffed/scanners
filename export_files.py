@@ -11,7 +11,6 @@ from utils.utils_rules import get_regexes, profile
 #from utils.utils_systems import sysinfo, boottime
 
 logger = logging.getLogger(__name__)
-logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
 
 def process(config: dict = dict):
     """
@@ -28,8 +27,11 @@ def process(config: dict = dict):
     """
     data = get_data(config=config)
     rows = []
-    f_fields = 0
-    w_fields = 0
+    # highest folder / word column index actually populated on any row.
+    # -1 means none, so no f00 / w00 column is requested for an estate whose
+    # records have no folders, or whose filenames yield no word-type parts.
+    f_fields = -1
+    w_fields = -1
     m_cols = set()
 
     for idx, (filepath, f) in enumerate(data.get("files", {}).items()):
@@ -97,6 +99,8 @@ def process(config: dict = dict):
     writer.save()
 
 if __name__ == "__main__":
+    import logging.config
+    logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
     logger.info("Running Export Files...")
     from argparse import ArgumentParser
     argparser = ArgumentParser(

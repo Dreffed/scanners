@@ -27,9 +27,13 @@ pipeline stages, and to expose inverted indexes (by extension, hash,
 filename, GUID).
 
 - **Responsibilities**: durable read/write of the catalogue; index
-  maintenance; deduplication signal.
+  maintenance; deduplication signal; migration between backends.
 - **Quality attributes**: single source of truth between stages;
-  swappable backend.
+  swappable backend behind one public surface (`get_data` /
+  `save_data`); incremental, crash-safe writes so an interrupted run
+  keeps what it found; indexes derived from the record set rather than
+  maintained by callers, so they cannot drift; catalogue size is not
+  bounded by memory.
 
 ## ABB-03 — Format Parser Framework
 

@@ -8,7 +8,7 @@ that realise it. Keep in sync when adding either an ABB or an SBB.
 | ABB | Capability | Realised by |
 | --- | ---------- | ----------- |
 | ABB-01 | Filesystem Traversal | SBB-01, SBB-02, SBB-03 |
-| ABB-02 | Catalogue Store | SBB-04, SBB-15 |
+| ABB-02 | Catalogue Store | SBB-17 (default), SBB-20 (migration), SBB-04 (legacy, read-only), SBB-15 |
 | ABB-03 | Format Parser Framework | SBB-05, SBB-06, SBB-07, SBB-08a…SBB-08i |
 | ABB-04 | Filename Profiling | SBB-09 (utils_rules + NameParser), SBB-02 (invocation site) |
 | ABB-05 | Rule-Based Tagging | SBB-10 |
@@ -25,7 +25,7 @@ that realise it. Keep in sync when adding either an ABB or an SBB.
 | SBB-01 | File walker & hasher (`utils/utils_files.py`) | ABB-01 |
 | SBB-02 | Scan orchestrator, pickle (`scan_files.py`) | ABB-01, ABB-02, ABB-04 |
 | SBB-03 | Scan orchestrator, Neo4j (`scan_files_gdb.py`) | ABB-01, ABB-10 |
-| SBB-04 | Pickle catalogue store (`utils/utils_pickle.py`) | ABB-02 |
+| SBB-04 | Pickle catalogue store + backend routing (`utils/utils_pickle.py`) | ABB-02 (legacy store, read-only; still the front door for backend selection) |
 | SBB-05 | Parser loader (`parser_loader.py`) | ABB-03 |
 | SBB-06 | Base parser contract (`parsers/base_parser.py`) | ABB-03 |
 | SBB-07 | Analyse orchestrator (`analyze_files.py`) | ABB-03 |
@@ -38,6 +38,8 @@ that realise it. Keep in sync when adding either an ABB or an SBB.
 | SBB-14 | Logging configuration | ABB-09 |
 | SBB-15 | Graph data model (`utils/utils_database.py`) | ABB-02, ABB-10 |
 | SBB-16 | Configuration set (`config/*.json`) | ABB-08 |
+| SBB-17 | SQLite catalogue store (`utils/utils_sqlite.py`) | ABB-02 |
+| SBB-20 | Pickle → SQLite migrator (`migrate_pickle_to_sqlite.py`) | ABB-02 |
 
 ## Coverage notes
 
@@ -49,3 +51,8 @@ that realise it. Keep in sync when adding either an ABB or an SBB.
   is not yet wiring them from the scan loop.
 - **Parser plugins**: new parsers extend ABB-03 as new SBB-08x rows —
   do not add a new ABB per format.
+- **ABB-02 catalogue store**: SBB-17 (SQLite) is the default; SBB-04
+  (pickle) remains for reading legacy catalogues and for backend
+  routing. SBB-18 (volume identifier) and SBB-19 (purge utility) are
+  reserved for later phases of the
+  [scan-performance changelist](changelist-scan-performance.md).

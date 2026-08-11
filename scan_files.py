@@ -3,13 +3,12 @@ import os
 from datetime import datetime
 import logging
 from utils.utils_files import scan_files, get_filename
-from utils.utils_pickle import save_pickle, get_data
+from utils.utils_pickle import derives_indexes, get_data, save_data
 from utils.utils_json import get_setup
 from utils.utils_rules import get_regexes, profile
 #from utils.utils_systems import sysinfo, boottime
 
 logger = logging.getLogger(__name__)
-logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
 
 def process(config: dict = dict):
     """
@@ -26,6 +25,10 @@ def process(config: dict = dict):
     """
 
     data = get_data(config=config)
+
+    # SQLite derives the inverted indexes by query; only the pickle backend
+    # needs them built by hand here.
+    derived = derives_indexes(data)
 
     files = data.get("files", {})
     exts = data.get("exts", {})
@@ -87,42 +90,44 @@ def process(config: dict = dict):
             scan["files"].append(uuid)
             files[filepath] = f
 
-            # guid index
-            if uuid not in guids:
-                guids[uuid] = []
-            guids[uuid].append(filepath)
+            if not derived:
+                # guid index
+                if uuid not in guids:
+                    guids[uuid] = []
+                guids[uuid].append(filepath)
 
-            # sort extensions...
-            if f.get("ext").lower() not in exts:
-                exts[f.get("ext").lower()] = []
-            
-            exts[f.get("ext").lower()].append(uuid)
+                # sort extensions...
+                if f.get("ext").lower() not in exts:
+                    exts[f.get("ext").lower()] = []
 
-            # sort filenames
-            if filename not in filenames:
-                filenames[filename] = []
-            
-            filenames[filename].append(uuid)
+                exts[f.get("ext").lower()].append(uuid)
 
-            # hash
-            hashvalue = f.get("hash", {}).get("SHA1", "")
-            if hashvalue:
-                if hashvalue not in hashes:
-                    hashes[hashvalue] = []
-                hashes[hashvalue].append(uuid)
+                # sort filenames
+                if filename not in filenames:
+                    filenames[filename] = []
+
+                filenames[filename].append(uuid)
+
+                # hash
+                hashvalue = f.get("hash", {}).get("SHA1", "")
+                if hashvalue:
+                    if hashvalue not in hashes:
+                        hashes[hashvalue] = []
+                    hashes[hashvalue].append(uuid)
 
         scans.append(scan)
 
         # update the data object...
         data["files"] = files
-        data["exts"] = exts
-        data["filenames"] = filenames
-        data["hashes"] = hashes
-        data["guids"] = guids
         data["scans"] = scans
+        if not derived:
+            data["exts"] = exts
+            data["filenames"] = filenames
+            data["hashes"] = hashes
+            data["guids"] = guids
 
-        # save the file
-        save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
+        # save after each root, so an interrupted scan keeps what it found
+        save_data(data=data, config=config)
 
 def print_results(data: dict):
     """
@@ -151,6 +156,8 @@ def print_results(data: dict):
 
 
 if __name__ == "__main__":
+    import logging.config
+    logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
     logger.info("Running Scan Files...")
     from argparse import ArgumentParser
     argparser = ArgumentParser(

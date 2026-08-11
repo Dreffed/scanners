@@ -10,7 +10,6 @@ from utils.utils_json import get_setup, load_json
 
 
 logger = logging.getLogger(__name__)
-logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
 
 def run_regex(item: object, rule: dict) -> dict:
     """This will run a regex against the returns a dict of tags found"""
@@ -173,6 +172,8 @@ def process(config: dict = dict):
     save_data(data=data, config=config)
 
 if __name__ == "__main__":
+    import logging.config
+    logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
     logger.info("Running Rule Engine Files...")
     from argparse import ArgumentParser
     argparser = ArgumentParser(

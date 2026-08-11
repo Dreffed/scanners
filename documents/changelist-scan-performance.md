@@ -1,6 +1,6 @@
 # Changelist — Scan & Hash Performance
 
-**Status:** proposed, not yet implemented.
+**Status:** Phase 0 shipped. Phases 1–6 proposed, not yet implemented.
 **Goal:** re-scanning a USB-attached HDD should be fast enough to routinely
 detect adds / deletes / modifications without re-reading every byte.
 **Primary use case:** plug drive in → run scan → get a delta report in
@@ -15,7 +15,7 @@ phase is a self-contained commit that can be shipped independently.
 
 | Area | Files touched | Behaviour change | Risk |
 | ---- | ------------- | ---------------- | ---- |
-| **SQLite catalogue (foundational)** | new `utils/utils_sqlite.py`, `utils/utils_pickle.py`, new `migrate_pickle_to_sqlite.py` | Default backend becomes SQLite; pickle stays read-only for legacy | Medium — schema decisions lock later phases in |
+| **SQLite catalogue (foundational)** — *shipped* | new `utils/utils_sqlite.py`, `utils/utils_pickle.py`, new `migrate_pickle_to_sqlite.py`, all five stages | Default backend becomes SQLite; pickle stays read-only for legacy | Medium — schema decisions lock later phases in |
 | Skip-hash-if-unchanged | `utils/utils_files.py`, `scan_files.py` | Repeat scans skip hashing when `(size, mtime_ns)` match prior record | Low — behaviour preserved on `--mode rehash` |
 | Soft-delete + retention | `scan_files.py`, new `purge_files.py`, config schema | Missing files get `deleted_at`; separate purge honours `purge_deleted_after_months` | Low — additive; nothing is lost without an explicit purge |
 | `os.scandir` + cached stat | `utils/utils_files.py` | One `stat()` per file instead of two | Low |
@@ -31,7 +31,32 @@ docs updated**.
 
 ---
 
-## Phase 0 — SQLite catalogue backend (foundational)
+## Phase 0 — SQLite catalogue backend (foundational) — **SHIPPED**
+
+**As built.** Matches the design below, with these refinements:
+
+- **`files.name` column added.** The `filenames` inverted index needs the
+  basename, and deriving it from `rel_path` in SQL is ugly. `name` is
+  populated from the basename regardless of `scanoptions.splitextention`,
+  and indexed.
+- **Indexes are read-only views.** `exts` / `filenames` / `hashes` /
+  `guids` are derived by query, so they cannot drift from `files`.
+  Callers that used to build them by hand check
+  `utils_pickle.derives_indexes(data)` first; assignment to one of these
+  views is ignored with a warning.
+- **In-place record mutation is tracked.** `analyze_files.py` and
+  `run_rules.py` mutate a record and rely on a later save. `FileRecord`
+  marks itself dirty on mutation and is upserted on flush (automatic
+  every 2000 records), so neither callsite had to change.
+- **Iteration is keyset-paged** (1000 rows), so a stage can mutate and
+  save mid-iteration without an open cursor over rows it is rewriting.
+- **Pickle writes raise** `CatalogueReadOnlyError` rather than failing
+  silently. `locations.data.readonly: false` re-enables them.
+- **Transitional hash shape.** The column is a single SHA1 hex string as
+  designed, but records are rehydrated as `{"SHA1": <hex>}` so the two
+  `hash.SHA1` readers keep working until Phase 3 flips them.
+- `deleted_at`, the per-scan change counters and real `volume_id` values
+  are provisioned in the schema but not yet driven — Phases 1 and 6.
 
 **Why first.** Every later phase either adds fields to the record
 (`mtime_ns`, `deleted_at`, `volume_id`, `hash_algo`) or relies on cheap
@@ -382,10 +407,28 @@ convenient with the relevant phase.
   `DicomParser`. (Currently no DICOM files are ever parsed.)
 - **Deprecation — `export_files.py`** calls `writer.save()`, removed in
   pandas 2.x. Switch to `with pd.ExcelWriter(...) as writer:`.
-- **Startup — every entry-point** runs
-  `logging.config.fileConfig('logging_config.ini', ...)` at import time.
-  `logging_config.ini` is gitignored, so a fresh clone can't even run
-  `--help`. Move the call into `if __name__ == "__main__":`.
+- ~~**Startup — every entry-point** runs
+  `logging.config.fileConfig('logging_config.ini', ...)` at import time.~~
+  **Done in Phase 0** — the call moved into `if __name__ == "__main__":`
+  on all five stages, so a stage can be imported without the ini.
+
+Found while verifying Phase 0, **both now fixed** — full write-ups in
+[defect-log.md](defect-log.md):
+
+- ~~**Bug — `analyze_files.py`** iterates the `:ALL:` entry as though it
+  held lists of parsers, so every `:ALL:` parser raised
+  `'NameParser' object is not iterable` into the surrounding `except`
+  and never ran.~~ **DEF-01, fixed** — normalised to a list, matching the
+  guard the extension-keyed branch already had.
+- ~~**Bug — `export_files.py`** builds `w_cols` from `w_fields`, which
+  starts at `0`, so `w00` is always requested even when no record has a
+  word-type profile part.~~ **DEF-02, fixed** — `f_fields` / `w_fields`
+  now start at `-1`, so an unpopulated column is not requested.
+
+Still open, logged while verifying the fixes: DEF-06
+(`export_files.py` raises `UnboundLocalError` on an empty catalogue) and
+DEF-07 (`analyze.allfiles.fields` is ignored, so `:ALL:` parsers receive
+the full path rather than the named fields).
 
 ---
 
@@ -393,6 +436,14 @@ convenient with the relevant phase.
 
 Every phase above implies one or more documentation edits. Grouped by
 file so the diff review is easy.
+
+**Phase 0 is done**: the SQLite-backend, migration-script, record-shape,
+backend-routing and logging-startup edits have landed in `CLAUDE.md`,
+`documents/reference-architecture.md`, `documents/abb-catalogue.md`,
+`documents/sbb-catalogue.md` (SBB-04 marked legacy; new SBB-17 and
+SBB-20) and `documents/abb-sbb-traceability.md`. What is listed below is
+what remains, and belongs to Phases 1–6. The root `README.md` rewrite
+still waits on Phase 1, as planned.
 
 ### `CLAUDE.md`
 
@@ -464,6 +515,9 @@ file so the diff review is easy.
   probes, fallback to `st_dev`, records the `id_source` used.
 - **New — SBB-19 Purge Utility** — `purge_files.py`, dry-run default,
   reads `scanoptions.purge_deleted_after_months`.
+- SBB-17 and **SBB-20** (pickle → SQLite migrator) are already written;
+  SBB-18 and SBB-19 stay reserved for the phases above, so the next new
+  building block takes SBB-21.
 
 ### `documents/abb-sbb-traceability.md`
 
@@ -484,10 +538,10 @@ file so the diff review is easy.
 
 ## Suggested rollout order
 
-1. **Phase 0 — SQLite backend + migration script.** Everything else
-   writes against this schema, so it must land first. Ship with the
-   legacy pickle backend still readable so `migrate_pickle_to_sqlite.py`
-   has a source.
+1. ~~**Phase 0 — SQLite backend + migration script.**~~ **Done.**
+   Everything else writes against this schema, so it landed first. The
+   legacy pickle backend is still readable so
+   `migrate_pickle_to_sqlite.py` has a source.
 2. **Phase 1 (skip re-hash + soft delete) + Phase 2 (scandir/`mtime_ns`)
    + Phase 4 (quick/full mode).** All three share a walker rewrite —
    ship them together. Add `purge_files.py` in the same PR.

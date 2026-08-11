@@ -1,13 +1,12 @@
 """"""
 import os
 import logging
-from utils.utils_pickle import save_pickle, get_data
+from utils.utils_pickle import get_data, save_data
 from utils.utils_files import get_filename
 from utils.utils_json import get_setup
 import parser_loader
 
 logger = logging.getLogger(__name__)
-logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
 
 def process(config: dict = dict()):
     """This will take the saved files data and process the using the main plugins, see config files
@@ -113,6 +112,9 @@ def process(config: dict = dict()):
 
                 # handle the all case...
                 for cls_list in functions.get(":ALL:", []):
+                    if not isinstance(cls_list, list):
+                        cls_list = [cls_list]
+
                     for cls in cls_list:
                         if cls:
                             for name, func in cls.get_functions().items():
@@ -126,12 +128,14 @@ def process(config: dict = dict()):
 
         if step > 0 and idx % step == 0:
             logger.info(f"== Processed {idx} of {total} files ({step} step)")
-            save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
+            save_data(data=data, config=config)
 
-    save_pickle(data=data, filename=get_filename(config.get("locations", {}).get("data", {})))
+    save_data(data=data, config=config)
 
 
 if __name__ == "__main__":
+    import logging.config
+    logging.config.fileConfig('logging_config.ini', disable_existing_loggers=False)
     logger.info("Running Analyze Files...")
     from argparse import ArgumentParser
     argparser = ArgumentParser(
