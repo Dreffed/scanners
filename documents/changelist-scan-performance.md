@@ -15,18 +15,107 @@ phase is a self-contained commit that can be shipped independently.
 
 | Area | Files touched | Behaviour change | Risk |
 | ---- | ------------- | ---------------- | ---- |
-| Skip-hash-if-unchanged | `utils/utils_files.py`, `scan_files.py` | Repeat scans skip hashing when `(size, mtime_ns)` match prior record | Low — behaviour preserved on full scan |
-| Delete detection | `scan_files.py` | New `scan.deleted[]` list emitted per scan | Low — additive |
+| **SQLite catalogue (foundational)** | new `utils/utils_sqlite.py`, `utils/utils_pickle.py`, new `migrate_pickle_to_sqlite.py` | Default backend becomes SQLite; pickle stays read-only for legacy | Medium — schema decisions lock later phases in |
+| Skip-hash-if-unchanged | `utils/utils_files.py`, `scan_files.py` | Repeat scans skip hashing when `(size, mtime_ns)` match prior record | Low — behaviour preserved on `--mode rehash` |
+| Soft-delete + retention | `scan_files.py`, new `purge_files.py`, config schema | Missing files get `deleted_at`; separate purge honours `purge_deleted_after_months` | Low — additive; nothing is lost without an explicit purge |
 | `os.scandir` + cached stat | `utils/utils_files.py` | One `stat()` per file instead of two | Low |
-| `mtime_ns` field | `utils/utils_files.py`, `scan_files.py`, `export_files.py` | New int field; formatted strings become derived | Medium — pickle schema grows a field |
-| Single hash + bigger buffer | `utils/utils_files.py`, config schema | MD5 dropped by default; SHA1/BLAKE3 configurable; 4 MB read buffer | Medium — downstream code reading `hash.MD5` breaks |
-| Quick vs full mode | `utils/utils_files.py`, `scan_files.py`, config schema | New `scanoptions.mode` flag | Low |
+| `mtime_ns` field | `utils/utils_files.py`, `scan_files.py`, `export_files.py` | New int field; formatted strings become derived | Low — DB schema is greenfield |
+| SHA1-only hash + 4 MB buffer | `utils/utils_files.py`, config schema | MD5 dropped; `hash = {"SHA1": hex}`; larger reads | Medium — downstream code reading `hash.MD5` breaks (must be updated in this phase) |
+| Quick vs full mode | `utils/utils_files.py`, `scan_files.py`, config schema | New `scanoptions.mode` flag (default `quick`) | Low |
 | Parallel hashing | `utils/utils_files.py`, `scan_files.py` | Thread pool for hash work | Medium — ordering, logging |
-| Volume-aware paths | `utils/utils_files.py`, `scan_files.py`, `utils/utils_marshallwindows.py` | Records keyed by `(volume_serial, relative_path)` | High — pickle migration required |
-| SQLite catalogue (opt-in) | new `utils/utils_sqlite.py`, `utils/utils_pickle.py` | Alternate backend behind `get_data`/`save_data` | Medium — new dep (stdlib only) |
+| Cross-platform volume ID | `utils/utils_marshallwindows.py` + new `utils/utils_volume.py`, `scan_files.py` | Records keyed by `(volume_id, relative_path)` on Windows/Linux/macOS | Medium — needs identifier probing on each platform |
 
-Total: **7 code files touched**, **4 docs updated**, **1 new util module**
-if the SQLite phase is taken.
+Total: **~8 code files touched**, **2 new util modules**, **2 new
+entry-points** (`migrate_pickle_to_sqlite.py`, `purge_files.py`), **4
+docs updated**.
+
+---
+
+## Phase 0 — SQLite catalogue backend (foundational)
+
+**Why first.** Every later phase either adds fields to the record
+(`mtime_ns`, `deleted_at`, `volume_id`, `hash_algo`) or relies on cheap
+prior-record lookup by path. Doing SQLite last would mean shipping a
+pickle format we immediately migrate away from.
+
+**Change.**
+
+- New module `utils/utils_sqlite.py` with the same public surface as
+  `utils/utils_pickle.py`:
+  - `get_data(config)` returns a proxy backed by SQLite.
+  - `save_data(data, config)` is a no-op when writes were committed
+    incrementally.
+  - Prior-record lookup is a single indexed query, not a dict load.
+- Schema (greenfield — reflects decisions on Phases 1, 3, 5, 6):
+  ```sql
+  CREATE TABLE volumes(
+    id            TEXT PRIMARY KEY,   -- volume identifier (see Phase 6)
+    id_source     TEXT NOT NULL,      -- 'win-serial' | 'linux-uuid' | 'macos-uuid' | 'st_dev'
+    label         TEXT,
+    first_seen    TEXT NOT NULL,
+    last_mount    TEXT
+  );
+
+  CREATE TABLE files(
+    volume_id     TEXT NOT NULL REFERENCES volumes(id),
+    rel_path      TEXT NOT NULL,
+    ext           TEXT,
+    size          INTEGER,
+    mtime_ns      INTEGER,
+    ctime_ns      INTEGER,
+    hash          TEXT,               -- SHA1 hex, may be NULL in quick mode
+    guid          TEXT NOT NULL,
+    profile       TEXT,               -- name-profile JSON
+    meta_json     TEXT,               -- parser output JSON blob
+    first_seen    TEXT NOT NULL,
+    last_seen     TEXT NOT NULL,
+    deleted_at    TEXT,               -- NULL = present; set = soft-deleted
+    PRIMARY KEY(volume_id, rel_path)
+  );
+  CREATE INDEX idx_files_hash    ON files(hash)       WHERE hash IS NOT NULL;
+  CREATE INDEX idx_files_ext     ON files(ext);
+  CREATE INDEX idx_files_deleted ON files(deleted_at) WHERE deleted_at IS NOT NULL;
+
+  CREATE TABLE scans(
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    volume_id     TEXT NOT NULL REFERENCES volumes(id),
+    started_at    TEXT NOT NULL,
+    finished_at   TEXT,
+    root          TEXT NOT NULL,
+    mode          TEXT NOT NULL,       -- 'quick' | 'full' | 'rehash'
+    added         INTEGER DEFAULT 0,
+    modified      INTEGER DEFAULT 0,
+    deleted       INTEGER DEFAULT 0,
+    unchanged     INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE scan_files(
+    scan_id       INTEGER NOT NULL REFERENCES scans(id),
+    guid          TEXT NOT NULL,
+    change        TEXT NOT NULL        -- 'added' | 'modified' | 'deleted' | 'unchanged'
+  );
+  ```
+- WAL mode, `PRAGMA synchronous = NORMAL`, commit after each root.
+- `locations.data.backend: "sqlite" | "pickle"` config key.
+  Default `"sqlite"` on new configs; existing configs with a
+  `.pickle` filename keep pickle read-only until migrated.
+- New entry-point `migrate_pickle_to_sqlite.py --pickle <path>
+  --sqlite <path>` — one-way, batches inserts inside a single
+  transaction, prompts for the current volume id if it can't be
+  probed automatically.
+
+### Files
+
+- **New:** `utils/utils_sqlite.py`, `migrate_pickle_to_sqlite.py`.
+- **Modified:** `utils/utils_pickle.py` (route `get_data`/`save_data`
+  by `locations.data.backend`), every entry-point (no change to
+  callsites — they already use `get_data`/`save_data`).
+
+### Expected result
+
+- O(1) prior-record lookup regardless of catalogue size.
+- Crash-safe: mid-scan power loss loses at most one root's records.
+- Enables ad-hoc SQL reporting alongside `display_files.py`.
 
 ---
 
@@ -53,19 +142,44 @@ the "have we seen this?" check makes repeat scans as slow as first scans.
 
 ### `scan_files.py`
 
-- Pass `prior=files` when calling `scan_files(...)`.
-- On `_unchanged=True`: append `guid` to `scan.files`, skip the
-  `files/exts/filenames/hashes/guids` mutations (they already contain the
-  entry).
+- Pass `prior=<sqlite proxy scoped to this volume>` when calling
+  `scan_files(...)`.
+- On `_unchanged=True`: bump `last_seen`, clear `deleted_at` if set,
+  record `('unchanged', guid)` on the scan; skip index writes (the row
+  is already in place).
+- On new / modified: upsert the row, clear `deleted_at`, record
+  `('added', guid)` or `('modified', guid)`.
 - Track `seen_paths: set[str]` during the walk.
-- After the walk for each root, compute
-  `deleted = [p for p in prior if p.startswith(scanpath) and p not in seen_paths]`
-  and store on `scan["deleted"] = deleted`.
+- **Soft delete pass**, after each root:
+  ```sql
+  UPDATE files
+     SET deleted_at = :scan_started_at
+   WHERE volume_id = :vol
+     AND rel_path LIKE :scanpath_prefix
+     AND deleted_at IS NULL
+     AND rel_path NOT IN (seen_paths);
+  ```
+  Metadata, hash, guid are preserved so an audit trail exists.
+  Insert `('deleted', guid)` rows into `scan_files` for the delta.
+- The `scans` row is updated with `added / modified / deleted /
+  unchanged` counters so `display_files.py` can show a per-scan delta
+  report.
+
+### Purge (separate, explicit)
+
+- New entry-point `purge_files.py -cp <config>`. Reads
+  `scanoptions.purge_deleted_after_months` (default `null` = never).
+  If set, deletes rows where
+  `deleted_at < date('now', printf('-%d months', :months))`. Prints a
+  dry-run count unless `--yes` is passed.
+- Never runs automatically as part of a scan (per your decision — a scan
+  should never lose data on its own).
 
 ### Expected result
 
-Second scan of an unchanged 200 k-file / 500 GB tree drops from **hours to
-seconds**. First scan is unchanged.
+Second scan of an unchanged 200 k-file / 500 GB tree drops from **hours
+to seconds**. Adds/modifies/deletes are surfaced as a delta report per
+scan, and no data is discarded until you run a purge.
 
 ---
 
@@ -100,40 +214,44 @@ detected.
 
 ---
 
-## Phase 3 — Single fast hash, larger buffer
+## Phase 3 — SHA1 only, larger buffer
 
 **Problem.** `make_hash` currently computes MD5 **and** SHA1 for every
-byte read, in 64 KB chunks. Both algorithms are slow on modern hardware
-and the small buffer maximises syscall overhead on USB.
+byte read, in 64 KB chunks. Doing both doubles CPU for no benefit; the
+small buffer maximises syscall overhead on USB.
 
-**Change.**
+**Change (decided).**
 
-- `make_hash(filepath, algo="sha1", bufsize=4*1024*1024)`:
-  - `algo` selects one of `sha1` (default, back-compat), `blake3`,
-    `xxh3_128`. Returns `{algo_name: hex}` — no more `{MD5, SHA1}`.
-  - Buffer default bumped to 4 MB.
-- `scanoptions.hashalgo` and `scanoptions.hashbuffer` added to the config
-  schema.
-- Optional deps: `blake3`, `xxhash` in `requirements.txt`, guarded by
-  try/except so the module still imports without them.
+- `make_hash(filepath, bufsize=4*1024*1024) -> str` — returns a SHA1
+  hex string. MD5 is gone.
+- The DB column is a single `hash TEXT` (SHA1 hex). No `hash_algo` column
+  — locked to SHA1.
+- `scanoptions.hashbuffer` added to the config schema (default
+  `4194304`).
 
 ### Breaking change
 
-Downstream code that reads `f["hash"]["MD5"]` or `["SHA1"]` will break.
+Downstream code reading `f["hash"]["MD5"]` or `f["hash"]["SHA1"]` breaks.
 Grep shows two call sites:
 
-- `scan_files.py` (`f_old.get("hash", {}).get("SHA1", "")`) — update to
-  read whichever key is present.
-- `export_files.py` (`f.get("hash",{}).get("SHA1")`) — same.
+- `scan_files.py` (`f_old.get("hash", {}).get("SHA1", "")`) → replace
+  with equality on the top-level `hash` string.
+- `export_files.py` (`f.get("hash",{}).get("SHA1")`) → same.
 
-Migration: if the pickle contains legacy `{MD5, SHA1}` records they keep
-working (the change-detection lookup falls back on size/mtime).
+Both are updated in this phase — no compatibility shim (per your Q3
+decision).
+
+### Migration
+
+- The pickle→SQLite migrator (Phase 0) extracts `hash.SHA1` from legacy
+  records and stores it as the new `hash` string. Records that only had
+  MD5 lose the hash on migration; they'll get re-hashed on the next
+  scan when their file is seen as changed.
 
 ### Expected result
 
-For new/changed files: SHA1 4 MB buffer ≈ **2× faster** than status quo;
-BLAKE3 ≈ **5–10× faster**; xxh3 ≈ **10–20× faster** (non-crypto — fine
-for change detection, not fine for integrity attestations).
+For new/changed files, ≈ **2× faster** than status quo (single algo,
+larger buffer, better USB throughput).
 
 ---
 
@@ -193,70 +311,61 @@ saturation point. Small change sets: no measurable effect.
 
 ---
 
-## Phase 6 — Volume-aware keys (recommended for USB)
+## Phase 6 — Cross-platform volume-aware keys
 
-**Problem.** Absolute paths embed the drive letter. Mount the same USB
-drive as `E:` today and `F:` next week and the scanner sees every file
-as "new" and every prior record as "deleted".
+**Problem.** Absolute paths embed the drive letter / mount point. Mount
+the same USB drive as `E:` today and `F:` next week (or `/media/ms/DISK`
+on Linux) and the scanner sees every file as "new" and every prior record
+as "deleted".
 
-**Change.**
+**Change (decided — cross-platform).**
 
-- New helper `utils/utils_marshallwindows.get_volume_serial(path) -> str`
-  (Windows-only for now; use `GetVolumeInformationW` via `ctypes` or
-  `win32api`).
-- Catalogue key becomes `(volume_serial, relative_path_from_mount)`.
-- New pickle top-level key `volumes: {serial: {label, first_seen,
-  last_mount_path}}`.
-- Add a one-off migration script `migrate_pickle_to_volume_keys.py` that
-  re-keys an existing pickle by prompting for the current serial.
+- New module `utils/utils_volume.py` with a single entry:
+  ```python
+  def identify(path: str) -> dict:
+      """Returns {id, id_source, label, mount_root}."""
+  ```
+  Implementations, tried in order:
+  - **Windows** — `GetVolumeInformationW` via `ctypes` (already partially
+    covered in `utils/utils_marshallwindows.py`). Returns
+    `id_source="win-serial"`, `id` = 8-hex serial.
+  - **Linux** — read `/proc/mounts` to find the mount root for `path`,
+    then read `/dev/disk/by-uuid/*` symlinks (or shell out to `blkid`
+    only if the sysfs read fails). Returns `id_source="linux-uuid"`.
+  - **macOS** — `diskutil info -plist <mount>` and pull `VolumeUUID`.
+    Returns `id_source="macos-uuid"`.
+  - **Fallback (any OS)** — `os.stat(mount_root).st_dev` as a hex
+    string, `id_source="st_dev"`. Ephemeral (changes across reboots) but
+    keeps the schema uniform.
+- The `volumes` table is populated on first sight (see Phase 0 schema).
+  `id_source` is stored so a later pass can upgrade `st_dev` fallback
+  records to the real UUID once available.
+- Absolute paths on records become **relative to `mount_root`**, e.g.
+  `Photos/2024/img.jpg` instead of `E:/Photos/2024/img.jpg`.
+
+### Migration
+
+- `migrate_pickle_to_sqlite.py` probes the current volume of each scan
+  root; if the probe fails it prompts for a manual id (or accepts
+  `--assume-volume <id>`).
+- Records already in SQLite from an earlier phase get a `volume_id` of
+  `"legacy"` until the drive is re-seen; the walker upgrades them
+  in-place on next scan.
 
 ### Risk
 
-- **Pickle schema break.** Migration required. Document the migration.
-- Non-Windows fallback: fall back to absolute paths.
+- Linux permission on `/proc/mounts` and `/dev/disk/by-uuid/` — needs
+  read access, usually fine for the mounting user.
+- macOS `diskutil` is a shell-out with a variable-shape plist; parse
+  defensively.
+- Symlinks across filesystems: report the target's volume, not the
+  link's.
 
 ### Expected result
 
-Drive letter changes are invisible. Same drive plugged into a different
-machine still recognised.
-
----
-
-## Phase 7 — SQLite catalogue backend (opt-in)
-
-**Problem.** Above ~50 k files, the load-mutate-write-whole-pickle cycle
-starts to dominate wall time and a mid-scan crash corrupts the whole
-catalogue.
-
-**Change.**
-
-- New module `utils/utils_sqlite.py`, same public surface as
-  `utils/utils_pickle.py`:
-  - `get_data(config)` returns a lazy proxy backed by a SQLite table.
-  - `save_data(data, config)` becomes a no-op if writes were already
-    committed (the store writes incrementally).
-- Schema:
-  ```sql
-  CREATE TABLE files(
-    volume TEXT, path TEXT, size INTEGER, mtime_ns INTEGER,
-    hash TEXT, hash_algo TEXT, guid TEXT, meta_json TEXT,
-    PRIMARY KEY(volume, path)
-  );
-  CREATE INDEX idx_files_hash ON files(hash);
-  CREATE INDEX idx_files_ext  ON files(path_ext);
-  CREATE TABLE scans(id INTEGER PRIMARY KEY, started_at TEXT, root TEXT);
-  CREATE TABLE scan_files(scan_id INTEGER, guid TEXT);
-  ```
-- WAL mode; commit after each root.
-- `locations.data.backend: "pickle" | "sqlite"` in config; default
-  stays `pickle` unless the pickle file is missing and a `.sqlite` file
-  exists.
-
-### Expected result
-
-- O(1) prior-record lookup regardless of catalogue size.
-- Crash-safe.
-- Enables SQL reporting alongside `display_files.py`.
+Drive letter and mount-point changes are invisible on all three
+platforms. Same drive plugged into a different machine is still
+recognised.
 
 ---
 
@@ -287,100 +396,142 @@ file so the diff review is easy.
 
 ### `CLAUDE.md`
 
-- **Commands section** — add the mode flag once Phase 4 lands:
-  `-cp <config> --mode quick|full|rehash` (or note the config key).
-- **Architecture section** — update the record shape once Phase 2 lands
-  to include `mtime_ns`.
-- **Conventions section** — once Phase 3 lands, add a note that
-  `f["hash"]` is `{<algo>: hex}` (single key) and that MD5 is no longer
-  produced by default.
-- **Gotchas section** — remove the `dicom_parser.py` and
-  `scan_files_gdb.py` items once fixed; remove the `writer.save()` item
-  once fixed.
+- **Commands section** — add `python migrate_pickle_to_sqlite.py …`
+  (Phase 0) and `python purge_files.py -cp <config>` (Phase 1).
+  Document the config key `scanoptions.mode` (Phase 4).
+- **Architecture section** — record shape gains `mtime_ns`, `ctime_ns`,
+  `deleted_at`, `volume_id`, `rel_path`. `hash: {MD5, SHA1}` becomes a
+  single SHA1 hex string. `data["files"]` is no longer a Python dict —
+  it's a SQLite-backed proxy (Phase 0).
+- **Conventions section** — add a note that `hash` is a SHA1 hex string
+  (no MD5) and that catalogue keys are `(volume_id, rel_path)` not
+  absolute paths.
+- **Gotchas section** — remove the `dicom_parser.py`,
+  `scan_files_gdb.py`, and `writer.save()` items as those cleanups land.
+  Add: "quick mode does not compute hashes — run `--mode full` if you
+  need SHA1 populated on new records."
 
 ### `documents/reference-architecture.md`
 
-- **§3 Pipeline** — add a "Quick vs Full mode" note under Scan.
-- **§5 Canonical data model** — add `mtime_ns`, `ctime_ns`; change
-  `hash: {MD5, SHA1}` to `hash: {<algo>: hex}`; add `_unchanged` and
-  `deleted[]` on scan record.
-- **§6 Extension points** — mention the SQLite backend as an alternative
-  after Phase 7.
-- **§7 Known constraints** — remove pickle-race caveat once SQLite lands;
-  add volume-serial caveat once Phase 6 lands.
+- **§3 Pipeline** — add "Quick vs Full mode" under Scan; add a
+  **Purge** row for `purge_files.py`.
+- **§4 Component view** — add `utils/utils_sqlite.py` and
+  `utils/utils_volume.py`; add `migrate_pickle_to_sqlite.py` and
+  `purge_files.py` to the entry-point layer.
+- **§5 Canonical data model** — replace the pickle-centric section with
+  the SQLite schema from Phase 0; explain the soft-delete /
+  `deleted_at` field; explain volume-aware keys.
+- **§6 Extension points** — SQLite is now the default backend; note
+  that alternate backends (e.g. Neo4j via SBB-15) still route through
+  the same public surface.
+- **§7 Known constraints** — remove the pickle-race caveat (SQLite WAL
+  handles it); add a "quick-mode does not detect content-only edits
+  that preserve size and mtime" caveat.
 
 ### `documents/abb-catalogue.md`
 
-- **ABB-01 Filesystem Traversal** — expand "Quality attributes" to
-  include: "quick and full modes; delete detection; parallel hashing of
-  changed files".
-- **ABB-02 Catalogue Store** — expand to acknowledge the SQLite
-  alternative and volume-aware keying.
-- Consider a new **ABB-11 Change Detection** if the quick-scan
-  capability grows further (e.g. filesystem watchers, USN journal on
-  Windows). Not needed for Phases 1–6.
+- **ABB-01 Filesystem Traversal** — expand "Quality attributes":
+  quick / full / rehash modes; delete detection with retention; parallel
+  hashing of changed files.
+- **ABB-02 Catalogue Store** — expand: SQLite is the default;
+  volume-aware keying; soft delete with retention; incremental,
+  crash-safe writes.
+- **ABB-06** — mention delta reports (added / modified / deleted /
+  unchanged counters per scan) as an output.
+- Add **ABB-11 Change Detection & Retention** — soft delete, purge
+  policy, delta reporting. Distinct from ABB-01 because retention
+  policy applies regardless of how changes were spotted.
 
 ### `documents/sbb-catalogue.md`
 
-- **SBB-01** — document new `prior` parameter on `scan_files`, new
-  `mtime_ns` field, `mode` handling.
-- **SBB-02** — document delete detection and `_unchanged` fast-path.
+- **SBB-01** — new `prior` parameter, new `mtime_ns`/`ctime_ns` fields,
+  `mode` handling, `scandir`-based walker.
+- **SBB-02** — soft-delete pass, `_unchanged` fast-path, delta counters
+  written to `scans` row.
 - **SBB-03** — remove "WIP" caveat once the local-init bug is fixed.
-- **SBB-04** — add note about the SQLite alternate (SBB-17 below).
+- **SBB-04 Pickle Catalogue Store** — mark as **legacy / read-only**;
+  point at SBB-17 for the current default.
 - **SBB-08i** — remove defect note once the class rename lands.
-- **SBB-11** — remove `writer.save()` caveat once fixed.
-- **SBB-16** — extend the example config sketch with `mode`,
-  `hashalgo`, `hashbuffer`, `hashworkers`.
-- **New — SBB-17 SQLite Catalogue Store** — added when Phase 7 ships:
-  file, contract, index list, migration script pointer.
-- **New — SBB-18 Volume Identifier** — added when Phase 6 ships:
-  `utils/utils_marshallwindows.get_volume_serial`.
+- **SBB-11** — remove `writer.save()` caveat once fixed; note that
+  export now reads from SQLite.
+- **SBB-16** — extend the example config: `mode`, `hashbuffer`,
+  `hashworkers`, `purge_deleted_after_months`,
+  `locations.data.backend`.
+- **New — SBB-17 SQLite Catalogue Store** — `utils/utils_sqlite.py`,
+  schema, WAL settings, incremental commit strategy, pointer to
+  `migrate_pickle_to_sqlite.py`.
+- **New — SBB-18 Volume Identifier** — `utils/utils_volume.py`, per-OS
+  probes, fallback to `st_dev`, records the `id_source` used.
+- **New — SBB-19 Purge Utility** — `purge_files.py`, dry-run default,
+  reads `scanoptions.purge_deleted_after_months`.
 
 ### `documents/abb-sbb-traceability.md`
 
-- Add rows for SBB-17 → ABB-02, ABB-10.
-- Add row for SBB-18 → ABB-01, ABB-02.
-- If ABB-11 is added, populate its realisers (SBB-01, SBB-02, SBB-17).
+- Update SBB-04 realisation of ABB-02 to note it is legacy read-only.
+- Add SBB-17 → ABB-02.
+- Add SBB-18 → ABB-01, ABB-02.
+- Add SBB-19 → ABB-11 (new).
+- If ABB-11 is added: SBB-01, SBB-02, SBB-17, SBB-19 realise it.
 
 ### `README.md` (root)
 
-- Currently 14 lines and out of date (no mention of `run_rules.py`,
-  `export_files.py`, `scan_files_gdb.py`, parsers, config, or the
-  pipeline). Suggest a rewrite that mirrors CLAUDE.md's overview but
-  aimed at a first-time human reader.
+- Currently 14 lines and out of date. Rewrite once Phase 0 and Phase 1
+  ship: overview, install, `scan → analyse → rule → export → display →
+  purge` flow, config example including `mode` and
+  `purge_deleted_after_months`.
 
 ---
 
 ## Suggested rollout order
 
-1. **Phase 1** (skip re-hash) + **Phase 2** (scandir/mtime_ns) —
-   one PR, one afternoon. Biggest wall-time win.
-2. **Cleanups** — same PR or next, low risk.
-3. **Phase 4** (quick/full mode) — trivial config plumbing on top of
-   Phase 1.
-4. **Phase 3** (single hash + buffer) — separate PR because it changes
-   the pickle schema on `hash`.
-5. **Phase 5** (parallel hashing) — optional; measure first.
-6. **Phase 6** (volume keys) — only if you actually re-mount drives to
-   different letters. Requires migration script.
-7. **Phase 7** (SQLite) — only if the pickle starts hurting (>50 k
-   files or crash-loss becomes a real risk).
+1. **Phase 0 — SQLite backend + migration script.** Everything else
+   writes against this schema, so it must land first. Ship with the
+   legacy pickle backend still readable so `migrate_pickle_to_sqlite.py`
+   has a source.
+2. **Phase 1 (skip re-hash + soft delete) + Phase 2 (scandir/`mtime_ns`)
+   + Phase 4 (quick/full mode).** All three share a walker rewrite —
+   ship them together. Add `purge_files.py` in the same PR.
+3. **Phase 3 (SHA1-only, 4 MB buffer).** Separate PR because it changes
+   the `hash` field shape and touches every reader.
+4. **Cleanups** (`dicom_parser.py` rename, `scan_files_gdb.py` init fix,
+   `writer.save()` → `writer.close()`, deferred logging config). Any
+   time; group with Phase 3 for convenience.
+5. **Phase 6 (cross-platform volume keys).** Needs per-OS probing; keep
+   isolated so it can be tested independently on Windows / Linux / macOS.
+6. **Phase 5 (parallel hashing).** Optional. Measure Phase 3
+   performance first — if repeat scans are already fast enough and full
+   scans are I/O-bound at the drive limit, parallel hashing adds no
+   value.
 
 ---
 
-## Open questions for you
+## Decisions (answered)
 
-1. **Hash choice.** Are you happy dropping MD5 entirely? SHA1 stays the
-   safe default; BLAKE3 is a new dep but a big speedup. Or do you need
-   MD5 for anything downstream?
-2. **Windows-only volume serials.** Fine to keep the volume-serial
-   feature Windows-only for now, or should it fall back to something
-   portable (e.g. `os.statvfs` on Linux)?
-3. **Config compatibility.** Would you prefer new fields default to
-   today's behaviour (safe) or default to the fast behaviour (breaks
-   MD5 consumers, needs the CLAUDE.md gotcha updated up-front)?
-4. **SQLite now or later.** Do you have any collections that hurt on
-   pickle today, or is this a "someday" item?
-5. **Deleted-file semantics.** Should a "deleted" record be pruned from
-   the catalogue on the next full scan, or kept forever with a
-   `deleted_at` timestamp for audit history?
+1. **Hash choice → SHA1 only.** MD5 is dropped. `hash` becomes
+   `{"SHA1": "<hex>"}`. No BLAKE3/xxh3 in scope — revisit later if
+   throughput on new/changed files becomes the bottleneck.
+2. **Volume identification → best available, cross-platform.**
+   Windows uses `GetVolumeInformationW` (serial number). Linux uses the
+   filesystem UUID from `/proc/mounts` + `blkid`, falling back to the
+   `st_dev` of the mount point. macOS uses `diskutil info -plist`
+   (`VolumeUUID`), falling back to `st_dev`. Records store
+   `volume: {id, id_source, label, first_seen, last_mount_path}` so
+   consumers know which identifier they've got.
+3. **Config compatibility → new behaviour on by default.** Fresh runs
+   get quick-mode, single-SHA1, `mtime_ns`, delete-marking, etc. No
+   silent-compatibility shims for MD5. The upfront doc pass (CLAUDE.md
+   gotchas, ABB/SBB catalogues) lands with Phase 1.
+4. **SQLite → in scope now.** Promoted from optional Phase 7 to
+   **foundational Phase 0** — every later phase writes against the new
+   schema, so we don't ship a pickle format we'll immediately migrate
+   away from. Pickle backend stays available for reading legacy
+   catalogues; a one-off `migrate_pickle_to_sqlite.py` script does the
+   move.
+5. **Deleted-file semantics → soft delete with retention.** Records are
+   never dropped mid-scan. When a prior path is not seen on a scan we
+   set `deleted_at = <scan timestamp>` and leave everything else
+   (metadata, hash, guid) intact. Reappearance clears `deleted_at`. A
+   purge is a separate operation controlled by
+   `scanoptions.purge_deleted_after_months` (default `null` = never)
+   and executed either at the end of a scan or by a new
+   `purge_files.py` entry-point.
